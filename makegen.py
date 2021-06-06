@@ -1,0 +1,232 @@
+#!/usr/bin/python3
+
+"""
+  Licensed under the MIT License <http://opensource.org/licenses/MIT>.
+  SPDX-License-Identifier: MIT
+  Copyright (c) 2021 Rafa Garcia <rafagarcia77@gmail.com>.
+  Permission is hereby  granted, free of charge, to any  person obtaining a copy
+  of this software and associated  documentation files (the "Software"), to deal
+  in the Software  without restriction, including without  limitation the rights
+  to  use, copy,  modify, merge,  publish, distribute,  sublicense, and/or  sell
+  copies  of  the Software,  and  to  permit persons  to  whom  the Software  is
+  furnished to do so, subject to the following conditions:
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+  THE SOFTWARE  IS PROVIDED "AS  IS", WITHOUT WARRANTY  OF ANY KIND,  EXPRESS OR
+  IMPLIED,  INCLUDING BUT  NOT  LIMITED TO  THE  WARRANTIES OF  MERCHANTABILITY,
+  FITNESS FOR  A PARTICULAR PURPOSE AND  NONINFRINGEMENT. IN NO EVENT  SHALL THE
+  AUTHORS  OR COPYRIGHT  HOLDERS  BE  LIABLE FOR  ANY  CLAIM,  DAMAGES OR  OTHER
+  LIABILITY, WHETHER IN AN ACTION OF  CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE  OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+"""
+
+import yaml
+import getopt
+from os.path import isabs, normpath
+from sys import argv
+
+HELP = """                 _
+ _ __ ___   __ _| | _____  __ _  ___ _ __
+| '_ ` _ \ / _` | |/ / _ \/ _` |/ _ \ '_ \\
+| | | | | | (_| |   <  __/ (_| |  __/ | | |
+|_| |_| |_|\__,_|_|\_\___|\__, |\___|_| |_|
+                          |___/
+
+Generate a makefile to build software projects
+    -h --help           Print this text
+    -v --version        Print version number
+    -i --input   <file> The project configuration file, project.yaml by default
+    -o --output  <file> The output makefile, makefile by default
+
+Example:
+    makegen --input config.yaml --output makefile
+
+"""
+
+TEXT1 = """\n.PRECIOUS: $(build_dir)/. $(build_dir)%/. $(dist_dir)/. $(dist_dir)%/.
+
+.PHONY: clean
+
+build: $(dist_dir)/$(target)
+
+all: clean build
+
+clean:
+	rm -rf $(dep) $(obj) $(dist_dir)/$(target)
+
+install: $(dist_dir)/$(target)
+	cp $(dist_dir)/$(target) $(install_dir)/$(target)
+	chmod +x $(install_dir)/$(target)
+
+uninstall:
+	rm -rf $(install_dir)/$(target)
+
+$(dist_dir)/.:
+	mkdir -p $@"""
+
+TEXT2 = """\n.SECONDEXPANSION:
+
+$(dist_dir)/$(target): $(obj) | $$(@D)/.
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)"""
+
+def getarg(argv):
+    """" Parse the arguments of command line interface and set the default values
+
+        Args:
+            argv:
+                Arguments vector (typ.: sys.argv)
+
+        Return:
+            A dictionary with the arguments
+    """
+    param = {
+        'help':    False,
+        'version': False,
+        'input':   'project.yaml',
+        'output':  'makefile'
+    }
+    options, _ = getopt.getopt(
+        argv[1:],
+        'i:o:hV',
+        [   'version',
+            'help',
+            'input=',
+            'output='
+        ]
+    )
+    for opt, arg in options:
+        if opt in ('-o', '--output'):
+            param['output'] = arg
+        elif opt in ('-i', '--input'):
+            param['input'] = arg
+        elif opt in ('-v', '--version'):
+            param['version'] = True
+        elif opt in ('-h', '--help'):
+            param['help'] = True
+    return param
+
+
+def getpath(path):
+    if type(path) != str:
+        raise Exception('All paths have to be strings')
+    if isabs(path):
+        raise Exception('All paths have to be relatives')
+    newpath = normpath(path)
+    if newpath.startswith('..'):
+        raise Exception(f'The path "{path}" is not in repo')
+    return newpath.replace('\\', '/')
+
+
+def getpath2(path):
+    if type(path) != str:
+        raise Exception('All paths have to be strings')
+    newpath = normpath(path)
+    if newpath.startswith('..'):
+        raise Exception(f'The path "{path}" is not in repo')
+    return newpath.replace('\\', '/')
+
+def getstr(data, label):
+    if type(data[label]) != str:
+        raise Exception(f'The member {label} has to be string')
+    return data[label]
+
+def main():
+
+    arg = getarg(argv)
+
+    if arg['help']:
+        print(HELP)
+        exit(0)
+
+    if arg['version']:
+        print('1.0')
+        exit(0)
+
+    with open(arg['input']) as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
+
+    dist = './dist' if 'dist' not in data.keys() else getpath(data['dist'])
+
+    build = './build' if 'build' not in data.keys() else getpath(data['build'])
+
+    install = '/usr/local/bin' if 'install-dir' not in data.keys() else getpath2(data['install-dir'])
+
+    target = 'out' if 'target-name' not in data.keys() else getstr(data,'target-name')
+
+    if 'include-dirs' in data.keys():
+        if type(data['include-dirs']) != list:
+            raise Exception(f'The member include-dirs has to be an array of strings')
+        headers = [getpath(header) for header in data['include-dirs']]
+    else:
+        headers = None
+
+    if 'source-dirs' in data.keys():
+        if type(data['source-dirs']) != list:
+            raise Exception(f'The member source-dirs has to be an array of strings')
+        sources = [getpath(source) for source in data['source-dirs']]
+    else:
+        sources = None
+
+
+    ext = 'c'
+    if 'iscpp' in data.keys():
+        if type(data['iscpp']) != bool:
+            raise Exception(f'The member iscpp has to be a boolean')
+        ext = 'cpp' if data['iscpp'] else 'c'
+
+    compiler = None if 'compiler' not in data.keys() else getstr(data,'compiler')
+
+    ldflags = None if 'ldflags' not in data.keys() else getstr(data,'ldflags')
+
+    with open(arg['output'], 'w') as strm:
+
+        print('# Makefile\n', file=strm)
+
+        print(f'build_dir = {build}', file=strm)
+        print(f'dist_dir = {dist}', file=strm)
+        print(f'target = {target}', file=strm)
+        print(f'install_dir = {install}', file=strm)
+
+        if compiler:
+            print(f'\nCC = {compiler}', file=strm)
+
+        if headers:
+            print('\ninchdr =', end='', file=strm)
+            for header in headers:
+                print(f' -I "{header}"', end='', file=strm)
+            print(file=strm)
+
+        print('CFLAGS += -MMD', end='', file=strm)
+        if 'cflags' in data.keys():
+            print(' ' + data['cflags'], end='', file=strm)
+        if headers:
+            print(' $(inchdr)', end='', file=strm)
+        print(file=strm)
+        if ldflags:
+            print(f'LDFLAGS += {ldflags}', file=strm)
+
+        for cnt, src in enumerate(sources):
+            print(f'\nsrc{cnt}_dir = {src}', file=strm)
+            print(f'obj{cnt}_dir = $(build_dir)/obj{cnt}', file=strm)
+            print(f'src{cnt} = $(wildcard $(src{cnt}_dir)/*.{ext})', file=strm)
+            print(f'obj{cnt}= $(patsubst $(src{cnt}_dir)/%.{ext}, $(obj{cnt}_dir)/%.o, $(src{cnt}))', file=strm)
+            print(f'src += $(src{cnt})', file=strm)
+            print(f'obj += $(obj{cnt})', file=strm)
+
+        print('\ndep = $(obj:.o=.d)', file=strm)
+
+        print(TEXT1, file=strm)
+
+        for cnt, src in enumerate(sources):
+            print(f'\n$(obj{cnt}_dir)/.:\n\tmkdir -p $@', file=strm)
+
+        print(TEXT2, file=strm)
+
+        for cnt, src in enumerate(sources):
+            print(f'\n$(obj{cnt}_dir)/%.o: $(src{cnt}_dir)/%.{ext} | $$(@D)/.\n\t$(CC) $(CFLAGS) -c -o $@ $<', file=strm)
+
+        print('\n-include $(dep)', file=strm)
+
+if __name__ == '__main__':
+    main()
