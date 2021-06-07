@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
 """
   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
@@ -140,7 +140,7 @@ def main():
         exit(0)
 
     if arg['version']:
-        print('1.0')
+        print('0.1')
         exit(0)
 
     with open(arg['input']) as f:

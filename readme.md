@@ -1,6 +1,6 @@
 # makegen
 
-makegen is a python script that helps you to generate makefiles. It takes as input a very simple description of your project written in YAML file.
+makegen is a python script that helps you to generate makefiles. It takes as input a very simple description of your project written in [YAML](https://en.wikipedia.org/wiki/YAML) file.
 
 Minimal configuration file:
 
@@ -46,8 +46,7 @@ $
 To install:
 
 ```
-sudo cp makegen.py /usr/local/bin/makegen
-sudo chmod +x /usr/local/bin/makegen
+sudo python setup.py install
 ```
 
 Completed example with all features defined:
